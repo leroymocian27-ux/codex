@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vision Service Demo</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="viewer">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+      </section>
+      <aside class="panel">
+        <h1>Vision Service</h1>
+        <label>
+          Camera
+          <input id="cameraId" value="camera_01" />
+        </label>
+        <label>
+          RTSP URL
+          <input id="rtspUrl" value="rtsp://admin:YOUR_PASSWORD@192.168.8.252:10554/tcp/av0_1" />
+          <span class="hint">请将“你的密码”替换为摄像头明文密码；截图时不要暴露真实密码。</span>
+        </label>
+        <div class="actions">
+          <button id="startBtn">Start</button>
+          <button id="connectBtn">Connect</button>
+        </div>
+        <div id="recoveryBanner" hidden></div>
+        <section class="inspector manual-alert">
+          <h2>模拟告警发送</h2>
+          <label>
+            接收服务器 IP
+            <input id="manualAlertIp" value="192.168.8.253" placeholder="192.168.8.253" inputmode="decimal" />
+          </label>
+          <button id="sendManualAlertBtn" type="button">发送模拟告警</button>
+          <div id="manualAlertResult" class="manual-alert-result">尚未发送</div>
+        </section>
+        <dl>
+          <dt>WebRTC</dt>
+          <dd id="webrtcState">idle</dd>
+          <dt>WebSocket</dt>
+          <dd id="wsState">idle</dd>
+          <dt>Stream</dt>
+          <dd id="streamState">idle</dd>
+          <dt>Frame</dt>
+          <dd id="frameInfo">-</dd>
+          <dt>Persons</dt>
+          <dd id="personCount">0</dd>
+          <dt>Latency</dt>
+          <dd id="latency">-</dd>
+        </dl>
+        <section class="inspector">
+          <h2>目标详情</h2>
+          <dl>
+            <dt>Track ID</dt>
+            <dd id="targetTrackId">-</dd>
+            <dt>Target</dt>
+            <dd id="targetFlag">-</dd>
+            <dt>Person</dt>
+            <dd id="targetPerson">-</dd>
+            <dt>Tracking</dt>
+            <dd id="trackingState">-</dd>
+            <dt>Identity</dt>
+            <dd id="identityState">-</dd>
+            <dt>Behavior</dt>
+            <dd id="behaviorState">-</dd>
+            <dt>Pose</dt>
+            <dd id="poseState">-</dd>
+            <dt>Fall State</dt>
+            <dd id="fallState">-</dd>
+            <dt>Risk</dt>
+            <dd id="riskLevel">-</dd>
+            <dt>Fall Prob</dt>
+            <dd id="fallProbability">-</dd>
+            <dt>Countdown</dt>
+            <dd id="fallCountdown">-</dd>
+            <dt>Shadow Prob</dt>
+            <dd id="shadowProbability">-</dd>
+            <dt>Window</dt>
+            <dd id="temporalWindow">-</dd>
+            <dt>Reporter</dt>
+            <dd id="reporterStatus">-</dd>
+          </dl>
+        </section>
+        <section class="inspector">
+          <h2>性能指标</h2>
+          <dl>
+            <dt>Detect FPS</dt>
+            <dd id="detectionFps">-</dd>
+            <dt>Track FPS</dt>
+            <dd id="trackingFps">-</dd>
+            <dt>Pose FPS</dt>
+            <dd id="poseFps">-</dd>
+            <dt>AI FPS</dt>
+            <dd id="aiFps">-</dd>
+            <dt>Backend Source</dt>
+            <dd id="backendSource">-</dd>
+            <dt>Video FPS</dt>
+            <dd id="videoFps">-</dd>
+            <dt>WS FPS</dt>
+            <dd id="wsFps">-</dd>
+            <dt>Overlay FPS</dt>
+            <dd id="overlayFps">-</dd>
+            <dt>Overlay Age</dt>
+            <dd id="overlayAge">-</dd>
+            <dt>Video Frames</dt>
+            <dd id="videoFrames">-</dd>
+            <dt>Video Ready</dt>
+            <dd id="videoReadyState">-</dd>
+            <dt>Video Size</dt>
+            <dd id="videoSize">-</dd>
+            <dt>PC Exists</dt>
+            <dd id="pcExists">-</dd>
+            <dt>ICE State</dt>
+            <dd id="iceConnectionState">-</dd>
+            <dt>ICE Gathering</dt>
+            <dd id="iceGatheringState">-</dd>
+            <dt>Signaling</dt>
+            <dd id="signalingState">-</dd>
+            <dt>Has Stream</dt>
+            <dd id="hasSrcObject">-</dd>
+            <dt>Tracks</dt>
+            <dd id="srcObjectTracks">-</dd>
+          </dl>
+        </section>
+        <pre id="statusBox">{}</pre>
+      </aside>
+    </main>
+    <script src="./overlay.js?v=single-source-sync-20260615"></script>
+    <script src="./app.js?v=single-source-sync-20260615"></script>
+  </body>
+</html>
