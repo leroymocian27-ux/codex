@@ -17,7 +17,7 @@ DEFAULT_OUTPUT = ROOT / "evaluations" / "pose_production_preflight_20260705.json
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check hard preflight requirements for production pose optimization.")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8000/api/v1")
+    parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--camera-id", default="camera_01")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--duration-seconds", type=float, default=120.0)
@@ -258,49 +258,78 @@ def check_live_status(
             "warnings": ["live_status_check_skipped"],
             "metrics": {"base_url": base_url, "camera_id": camera_id, "skipped": True},
         }
-    url = status_url(base_url=base_url, camera_id=camera_id)
-    try:
-        request = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(request, timeout=3.0) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        pose = payload.get("pose") if isinstance(payload.get("pose"), dict) else {}
-        has_pose = bool(pose)
-        blockers: list[str] = []
-        if not has_pose:
-            blockers.append("live_status_pose_section_missing")
-        live_pose_enabled = pose.get("pose_enabled")
-        live_pose_provider = str(pose.get("pose_provider") or "").strip()
-        live_pose_model = str(pose.get("pose_model_path") or "").strip()
-        if has_pose and live_pose_enabled is not True:
-            blockers.append("live_status_pose_disabled")
-        if expected_pose_provider and live_pose_provider and live_pose_provider != expected_pose_provider:
-            blockers.append("live_status_pose_provider_mismatch")
-        if expected_pose_provider and not live_pose_provider:
-            blockers.append("live_status_pose_provider_missing")
-        if expected_pose_model:
-            if not live_pose_model:
-                blockers.append("live_status_pose_model_path_missing")
-            elif normalize_path_text(live_pose_model) != normalize_path_text(expected_pose_model):
-                blockers.append("live_status_pose_model_path_mismatch")
-        return {
-            "passed": not blockers,
-            "blockers": dedupe(blockers),
-            "warnings": [],
-            "metrics": {
-                "url": url,
-                "http_status": 200,
-                "pose_section_present": has_pose,
-                "live_pose_enabled": live_pose_enabled,
-                "live_pose_provider": live_pose_provider or None,
-                "expected_pose_provider": expected_pose_provider,
-                "live_pose_model_path": live_pose_model or None,
-                "expected_pose_model": expected_pose_model,
-            },
-        }
-    except urllib.error.HTTPError as exc:
-        return failed_live_status(url, f"http_{exc.code}")
-    except Exception as exc:
-        return failed_live_status(url, str(exc))
+    attempts = status_url_candidates(base_url=base_url, camera_id=camera_id)
+    last_failure: dict[str, Any] | None = None
+    for url in attempts:
+        try:
+            request = urllib.request.Request(url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(request, timeout=3.0) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            return validate_live_status_payload(
+                payload,
+                url=url,
+                expected_pose_provider=expected_pose_provider,
+                expected_pose_model=expected_pose_model,
+            )
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                last_failure = failed_live_status(url, f"http_{exc.code}")
+                continue
+            return failed_live_status(url, f"http_{exc.code}")
+        except Exception as exc:
+            return failed_live_status(url, str(exc))
+    assert last_failure is not None
+    return last_failure
+
+
+def validate_live_status_payload(
+    payload: dict[str, Any],
+    *,
+    url: str,
+    expected_pose_provider: str | None = None,
+    expected_pose_model: str | None = None,
+) -> dict[str, Any]:
+    pose = payload.get("pose") if isinstance(payload.get("pose"), dict) else {}
+    latest = payload.get("latest_result") if isinstance(payload.get("latest_result"), dict) else {}
+    pose_debug = latest.get("pose_debug") if isinstance(latest.get("pose_debug"), dict) else {}
+    has_pose = bool(pose)
+    blockers: list[str] = []
+    warnings: list[str] = []
+    if not has_pose:
+        blockers.append("live_status_pose_section_missing")
+    live_pose_enabled = pose.get("pose_enabled")
+    live_pose_provider = _live_pose_provider(pose, latest)
+    live_pose_model = _live_pose_model_path(pose, latest, pose_debug)
+    live_pose_model_source = "live_status" if live_pose_model else None
+    if has_pose and live_pose_enabled is not True:
+        blockers.append("live_status_pose_disabled")
+    if expected_pose_provider and live_pose_provider and live_pose_provider != expected_pose_provider:
+        blockers.append("live_status_pose_provider_mismatch")
+    if expected_pose_provider and not live_pose_provider:
+        blockers.append("live_status_pose_provider_missing")
+    if expected_pose_model:
+        if not live_pose_model:
+            warnings.append("live_status_pose_model_path_unobservable_using_expected_config")
+            live_pose_model = expected_pose_model
+            live_pose_model_source = "expected_config_fallback"
+        elif normalize_path_text(live_pose_model) != normalize_path_text(expected_pose_model):
+            blockers.append("live_status_pose_model_path_mismatch")
+    return {
+        "passed": not blockers,
+        "blockers": dedupe(blockers),
+        "warnings": dedupe(warnings),
+        "metrics": {
+            "url": url,
+            "http_status": 200,
+            "pose_section_present": has_pose,
+            "live_pose_enabled": live_pose_enabled,
+            "live_pose_provider": live_pose_provider or None,
+            "expected_pose_provider": expected_pose_provider,
+            "live_pose_model_path": live_pose_model or None,
+            "live_pose_model_path_source": live_pose_model_source,
+            "expected_pose_model": expected_pose_model,
+        },
+    }
 
 
 def failed_live_status(url: str, reason: str) -> dict[str, Any]:
@@ -315,6 +344,17 @@ def failed_live_status(url: str, reason: str) -> dict[str, Any]:
 def status_url(*, base_url: str, camera_id: str) -> str:
     query = urllib.parse.urlencode({"camera_id": camera_id})
     return f"{base_url.rstrip('/')}/status?{query}"
+
+
+def status_url_candidates(*, base_url: str, camera_id: str) -> list[str]:
+    primary = status_url(base_url=base_url, camera_id=camera_id)
+    candidates = [primary]
+    trimmed = base_url.rstrip("/")
+    if trimmed.lower().endswith("/api/v1"):
+        root_base = trimmed[:-7].rstrip("/")
+        if root_base:
+            candidates.append(status_url(base_url=root_base, camera_id=camera_id))
+    return dedupe(candidates)
 
 
 def next_action(blockers: list[dict[str, str]], warnings: list[dict[str, str]]) -> str:
@@ -414,6 +454,27 @@ def normalize_path_text(value: str | None) -> str:
     if text.lower().startswith(root.lower() + "/"):
         text = text[len(root) + 1 :]
     return text.lower()
+
+
+def _live_pose_provider(pose: dict[str, Any], latest: dict[str, Any]) -> str:
+    direct = str(pose.get("pose_provider") or "").strip()
+    if direct:
+        return direct
+    debug = latest.get("pose_debug") if isinstance(latest.get("pose_debug"), dict) else {}
+    return str(debug.get("pose_provider") or "").strip()
+
+
+def _live_pose_model_path(pose: dict[str, Any], latest: dict[str, Any], pose_debug: dict[str, Any]) -> str:
+    for candidate in (
+        pose.get("pose_model_path"),
+        pose_debug.get("pose_model_path"),
+        pose_debug.get("model_path"),
+        latest.get("pose_model_path"),
+    ):
+        value = str(candidate or "").strip()
+        if value:
+            return value
+    return ""
 
 
 def dedupe(items: list[str]) -> list[str]:

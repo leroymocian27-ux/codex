@@ -139,6 +139,20 @@ class PoseServiceDiagnosticsTest(unittest.TestCase):
         self.assertEqual(status.pose_quality_level, "valid")
         self.assertEqual(enriched[0].pose["pose_quality_level"], "valid")
 
+    def test_status_reports_configured_pose_model_path_without_recent_pose_context(self) -> None:
+        settings = replace(
+            Settings(),
+            enable_pose=True,
+            pose_provider="yolo11_legacy",
+            yolo11_pose_model_path="models/runtime_pose.pt",
+        )
+        service = PoseService(settings=settings)
+
+        status = service.status("camera_01")
+
+        self.assertEqual(status.pose_provider, "yolo11_legacy")
+        self.assertEqual(status.pose_model_path, "models/runtime_pose.pt")
+
     def test_pose_fps_throttle_uses_inference_start_time_not_completion_time(self) -> None:
         settings = replace(
             Settings(),

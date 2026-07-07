@@ -23,6 +23,10 @@ identity_service/data/
 Ultralytics/
 runs/
 video/
+tmp/
+backups/
+reports/
+evaluations/
 models/rtmpose/
 
 *.pt
@@ -30,6 +34,7 @@ models/rtmpose/
 *.onnx
 *.engine
 *.zip
+*.log
 
 dist/
 build/

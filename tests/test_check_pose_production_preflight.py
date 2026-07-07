@@ -12,6 +12,8 @@ from scripts.check_pose_production_preflight import (
     check_pose_runtime_config,
     check_required_files,
     status_url,
+    status_url_candidates,
+    validate_live_status_payload,
 )
 
 
@@ -125,6 +127,63 @@ class CheckPoseProductionPreflightTest(unittest.TestCase):
         self.assertFalse(report["passed"])
         self.assertIn("live_status_pose_provider_mismatch", report["blockers"])
         self.assertIn("live_status_pose_model_path_mismatch", report["blockers"])
+
+    def test_live_status_payload_accepts_pose_model_path_from_latest_result_pose_debug(self) -> None:
+        payload = {
+            "pose": {
+                "pose_enabled": True,
+                "pose_provider": "yolo11_legacy",
+            },
+            "latest_result": {
+                "pose_debug": {
+                    "pose_model_path": "D:/Program/vision_service/yolo11n-pose.pt",
+                }
+            },
+        }
+
+        report = validate_live_status_payload(
+            payload,
+            url="http://127.0.0.1:8000/status?camera_id=camera_01",
+            expected_pose_provider="yolo11_legacy",
+            expected_pose_model="yolo11n-pose.pt",
+        )
+
+        self.assertTrue(report["passed"])
+        self.assertEqual(report["metrics"]["live_pose_model_path"], "D:/Program/vision_service/yolo11n-pose.pt")
+        self.assertEqual(report["warnings"], [])
+
+    def test_live_status_payload_warns_when_model_path_is_unobservable_and_uses_expected_config(self) -> None:
+        payload = {
+            "pose": {
+                "pose_enabled": True,
+                "pose_provider": "yolo11_legacy",
+                "pose_model_path": None,
+            }
+        }
+
+        report = validate_live_status_payload(
+            payload,
+            url="http://127.0.0.1:8000/status?camera_id=camera_01",
+            expected_pose_provider="yolo11_legacy",
+            expected_pose_model="yolo11n-pose.pt",
+        )
+
+        self.assertTrue(report["passed"])
+        self.assertEqual(
+            report["warnings"],
+            ["live_status_pose_model_path_unobservable_using_expected_config"],
+        )
+        self.assertEqual(report["metrics"]["live_pose_model_path"], "yolo11n-pose.pt")
+        self.assertEqual(report["metrics"]["live_pose_model_path_source"], "expected_config_fallback")
+
+    def test_status_url_candidates_include_root_fallback_for_api_v1_base(self) -> None:
+        self.assertEqual(
+            status_url_candidates(base_url="http://example.test/api/v1/", camera_id="cam 1"),
+            [
+                "http://example.test/api/v1/status?camera_id=cam+1",
+                "http://example.test/status?camera_id=cam+1",
+            ],
+        )
 
     def test_build_report_blocks_cpu_only_production_host(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

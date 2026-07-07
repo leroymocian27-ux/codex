@@ -381,8 +381,24 @@ class PoseService:
             tracking_frame_seq=context.get("tracking_frame_seq"),
             pose_tracking_seq_delta=context.get("pose_tracking_seq_delta"),
             pose_frame_age_ms=context.get("pose_frame_age_ms"),
-            pose_model_path=context.get("pose_model_path"),
+            pose_model_path=context.get("pose_model_path") or self._configured_pose_model_path(),
             pose_quality_level=context.get("pose_quality_level"),
+        )
+
+    def _configured_pose_model_path(self) -> str | None:
+        provider = str(self.provider_name or "").strip().lower()
+        if provider in {"yolo11_legacy", "branch4_legacy"}:
+            return getattr(self.settings, "yolo11_pose_model_path", None)
+        if provider == "yolo":
+            return getattr(self.settings, "yolo_pose_model_path", None)
+        if provider == "rtmpose_onnx":
+            return getattr(self.settings, "rtmpose_onnx_model_path", None)
+        if provider == "mmpose":
+            return getattr(self.settings, "rtmpose_checkpoint_path", None)
+        return (
+            getattr(self.settings, "yolo11_pose_model_path", None)
+            or getattr(self.settings, "yolo_pose_model_path", None)
+            or getattr(self.settings, "rtmpose_onnx_model_path", None)
         )
 
     def record_worker_tick(self, camera_id: str) -> None:

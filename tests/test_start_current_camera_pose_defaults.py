@@ -24,6 +24,18 @@ def test_start_current_camera_keeps_pose_runtime_defaults_less_brittle() -> None
     assert '"POSE_RESULT_TTL_MS": "500"' not in source
 
 
+def test_env_example_uses_current_pose_baseline_and_guard_defaults() -> None:
+    source = (Path(__file__).resolve().parents[1] / ".env.example").read_text(encoding="utf-8")
+
+    assert "POSE_PROVIDER=yolo11_legacy" in source
+    assert "YOLO11_POSE_MODEL_PATH=yolo11n-pose.pt" in source
+    assert "POSE_DEPLOYMENT_GUARD_ENABLED=true" in source
+    assert "POSE_EVIDENCE_PACKAGE=evaluations/pose_evidence_package_check_20260705.json" in source
+    assert "POSE_PROVIDER=yolo\n" not in source
+    assert "POSE_RESULT_TTL_MS=500" not in source
+    assert "POSE_MAX_FRAME_AGE_MS=500" not in source
+
+
 def test_service_start_scripts_do_not_reintroduce_brittle_pose_ttl_defaults() -> None:
     scripts = [
         Path(__file__).resolve().parents[1] / "scripts" / "start_current_camera.py",
@@ -36,6 +48,23 @@ def test_service_start_scripts_do_not_reintroduce_brittle_pose_ttl_defaults() ->
         assert '"POSE_RESULT_TTL_MS": "500"' not in source, script
         assert '"POSE_WORKER_FPS": "1"' not in source, script
         assert '"POSE_FPS": "1"' not in source, script
+
+
+def test_start_current_camera_does_not_force_temporal_mock_fallback() -> None:
+    source = (Path(__file__).resolve().parents[1] / "scripts" / "start_current_camera.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"TEMPORAL_FALLBACK_TO_MOCK": _env_or("TEMPORAL_FALLBACK_TO_MOCK", "false")' in source
+    assert '"TEMPORAL_FALLBACK_TO_MOCK": "true"' not in source
+
+
+def test_env_example_uses_current_temporal_runtime_defaults() -> None:
+    env_example = (Path(__file__).resolve().parents[1] / ".env.example").read_text(encoding="utf-8")
+
+    assert "ENABLE_TEMPORAL=true" in env_example
+    assert "TEMPORAL_MODEL_PROVIDER=onnx_lstm" in env_example
+    assert "TEMPORAL_FALLBACK_TO_MOCK=false" in env_example
 
 
 def test_pose_deployment_guard_runs_for_pose_plus_main_alerts() -> None:

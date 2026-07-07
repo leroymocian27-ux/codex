@@ -27,8 +27,8 @@ def main():
     assert report["summary"]["blockers"] == []
 
 
-def test_launch_safety_blocks_direct_pose_alert_uvicorn_without_guard(tmp_path: Path) -> None:
-    script = tmp_path / "unsafe_launcher.py"
+def test_launch_safety_allows_direct_pose_alert_uvicorn_when_app_lifespan_has_guard(tmp_path: Path) -> None:
+    script = tmp_path / "app_guarded_launcher.py"
     script.write_text(
         """
 env = {
@@ -44,9 +44,33 @@ subprocess.Popen(["python", "-m", "uvicorn", "app.main:app"], env=env)
 
     report = build_launch_safety_report([script])
 
+    assert report["summary"]["launch_safety_passed"] is True
+    warnings = report["summary"]["warnings"][0]["warnings"]
+    assert "direct_pose_alert_launch_relies_on_app_lifespan_guard" in warnings
+    assert report["checks"][0]["metrics"]["app_main_pose_deployment_guard"] is True
+
+
+def test_launch_safety_blocks_direct_pose_alert_uvicorn_when_app_guard_is_disabled(tmp_path: Path) -> None:
+    script = tmp_path / "unsafe_launcher.py"
+    script.write_text(
+        """
+env = {
+    "ENABLE_POSE": "true",
+    "MAIN_SYSTEM_ALERT_ENABLED": "true",
+    "POSE_DEPLOYMENT_GUARD_ENABLED": "false",
+    "POSE_RESULT_TTL_MS": "800",
+    "POSE_MAX_FRAME_AGE_MS": "800",
+}
+subprocess.Popen(["python", "-m", "uvicorn", "app.main:app"], env=env)
+""",
+        encoding="utf-8",
+    )
+
+    report = build_launch_safety_report([script])
+
     blockers = report["summary"]["blockers"][0]["blockers"]
     assert report["summary"]["launch_safety_passed"] is False
-    assert "direct_pose_alert_launch_without_deployment_guard" in blockers
+    assert "direct_pose_alert_launch_disables_app_deployment_guard" in blockers
 
 
 def test_launch_safety_blocks_brittle_pose_ttl_defaults(tmp_path: Path) -> None:

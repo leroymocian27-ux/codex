@@ -217,7 +217,7 @@ def main() -> int:
             "TEMPORAL_MODEL_PROVIDER": args.temporal_provider,
             "TEMPORAL_ONNX_MODEL_PATH": args.temporal_model_path,
             "TEMPORAL_FEATURE_SCHEMA_PATH": args.temporal_schema_path,
-            "TEMPORAL_FALLBACK_TO_MOCK": "true",
+            "TEMPORAL_FALLBACK_TO_MOCK": _env_or("TEMPORAL_FALLBACK_TO_MOCK", "false"),
             "TEMPORAL_ONNX_PROVIDERS": "CUDAExecutionProvider,CPUExecutionProvider",
             "MAIN_SYSTEM_ALERT_ENABLED": "true" if args.enable_main_system_alerts else _env_or("MAIN_SYSTEM_ALERT_ENABLED", "false"),
             "MAIN_SYSTEM_BASE_URL": args.main_system_base_url,
@@ -252,6 +252,8 @@ def main() -> int:
     print(f"[start] main_system_base_url={args.main_system_base_url}")
     print(f"[start] vision_public_base_url={vision_public_base_url}")
     print(f"[start] YOLO_CONFIG_DIR={yolo_config_dir}")
+    if env.get("TEMPORAL_FALLBACK_TO_MOCK", "").strip().lower() in {"1", "true", "yes", "on"}:
+        print("[warn] TEMPORAL_FALLBACK_TO_MOCK is enabled; temporal model failures may be masked by mock fallback.")
 
     if _should_run_pose_deployment_guard(args):
         guard_report = _write_pose_deployment_guard(

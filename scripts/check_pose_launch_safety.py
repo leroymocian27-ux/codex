@@ -77,9 +77,16 @@ def check_launch_script(path: Path) -> dict[str, Any]:
     if path.name == "launch_current_camera_background.py":
         if "scripts/start_current_camera.py" not in text.replace("\\", "/"):
             blockers.append("background_launcher_does_not_delegate_to_guarded_start_current_camera")
-    if metrics["direct_vision_uvicorn"] and metrics["enable_pose_true"] and metrics["main_alert_true"]:
+    app_guard_available = app_main_has_pose_deployment_guard()
+    metrics["app_main_pose_deployment_guard"] = app_guard_available
+    if metrics["direct_vision_uvicorn"] and metrics["enable_pose_true"] and metrics["main_alert_true"] and metrics["pose_deployment_guard_disabled"]:
+        blockers.append("direct_pose_alert_launch_disables_app_deployment_guard")
+    elif metrics["direct_vision_uvicorn"] and metrics["enable_pose_true"] and metrics["main_alert_true"]:
         if "check_pose_deployment_guard" not in text and "_write_pose_deployment_guard" not in text:
-            blockers.append("direct_pose_alert_launch_without_deployment_guard")
+            if app_guard_available:
+                warnings.append("direct_pose_alert_launch_relies_on_app_lifespan_guard")
+            else:
+                blockers.append("direct_pose_alert_launch_without_deployment_guard")
     if metrics["brittle_pose_ttl"]:
         blockers.append("brittle_pose_ttl_or_frame_age_default")
     if metrics["pose_worker_fps_below_3"]:
@@ -105,6 +112,10 @@ def script_metrics(text: str, *, path: Path) -> dict[str, Any]:
         "delegates_to_start_current_camera": "scripts/start_current_camera.py" in normalized,
         "enable_pose_true": '"ENABLE_POSE": "true"' in text or "'ENABLE_POSE': 'true'" in text,
         "main_alert_true": '"MAIN_SYSTEM_ALERT_ENABLED": "true"' in text or "'MAIN_SYSTEM_ALERT_ENABLED': 'true'" in text,
+        "pose_deployment_guard_disabled": (
+            '"POSE_DEPLOYMENT_GUARD_ENABLED": "false"' in text
+            or "'POSE_DEPLOYMENT_GUARD_ENABLED': 'false'" in text
+        ),
         "brittle_pose_ttl": (
             '"POSE_RESULT_TTL_MS": "500"' in text
             or '"POSE_MAX_FRAME_AGE_MS": "500"' in text
@@ -119,6 +130,19 @@ def script_metrics(text: str, *, path: Path) -> dict[str, Any]:
         ),
         "debug_script": "debug_" in path_text,
     }
+
+
+def app_main_has_pose_deployment_guard() -> bool:
+    app_main = ROOT / "app" / "main.py"
+    if not app_main.exists():
+        return False
+    text = app_main.read_text(encoding="utf-8")
+    required = (
+        "_enforce_pose_deployment_guard",
+        "build_deployment_guard_report_from_env",
+        "deployment_allowed",
+    )
+    return all(item in text for item in required)
 
 
 def next_action(blockers: list[dict[str, Any]], warnings: list[dict[str, Any]]) -> str:

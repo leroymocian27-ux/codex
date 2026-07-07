@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +44,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
+    _enforce_pose_deployment_guard(settings)
 
     source_manager = CameraSourceManager(settings)
     realtime_store = RealtimeResultStore()
@@ -189,3 +192,62 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+def _should_run_app_pose_deployment_guard(settings: Any) -> bool:
+    return bool(
+        getattr(settings, "pose_deployment_guard_enabled", True)
+        and getattr(settings, "enable_pose", False)
+        and getattr(settings, "main_system_alert_enabled", False)
+    )
+
+
+def _enforce_pose_deployment_guard(settings: Any) -> dict[str, Any] | None:
+    if not _should_run_app_pose_deployment_guard(settings):
+        return None
+
+    from scripts.check_pose_deployment_guard import build_deployment_guard_report_from_env
+
+    report = build_deployment_guard_report_from_env(
+        env=_pose_guard_env_from_settings(settings),
+        env_path="app_settings",
+        evidence_package_path=Path(getattr(settings, "pose_evidence_package")),
+        mode="production",
+    )
+    output_path = Path(getattr(settings, "pose_deployment_guard_output"))
+    if not output_path.is_absolute():
+        output_path = Path(__file__).resolve().parents[1] / output_path
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    if summary.get("deployment_allowed") is not True:
+        logger.error("pose_deployment_guard_rejected_startup summary=%s", summary)
+        raise RuntimeError("pose deployment guard rejected app startup")
+    return report
+
+
+def _pose_guard_env_from_settings(settings: Any) -> dict[str, str]:
+    values = {
+        "ENABLE_POSE": _bool_text(getattr(settings, "enable_pose", False)),
+        "POSE_PROVIDER": getattr(settings, "pose_provider", "disabled_placeholder"),
+        "POSE_WORKER_FPS": getattr(settings, "pose_worker_fps", 3.0),
+        "POSE_FPS": getattr(settings, "pose_fps", 3.0),
+        "POSE_RESULT_TTL_MS": getattr(settings, "pose_result_ttl_ms", 800),
+        "POSE_MAX_FRAME_AGE_MS": getattr(settings, "pose_max_frame_age_ms", 800),
+        "POSE_MAX_TRACKING_FRAME_DELTA": getattr(settings, "pose_max_tracking_frame_delta", 2),
+        "POSE_INFERENCE_LOCK_WAIT_MS": getattr(settings, "pose_inference_lock_wait_ms", 160),
+        "POSE_FALLBACK_TO_DETECTION": _bool_text(getattr(settings, "pose_fallback_to_detection", False)),
+        "YOLO_POSE_MODEL_PATH": getattr(settings, "yolo_pose_model_path", ""),
+        "YOLO_POSE_DEVICE": getattr(settings, "yolo_pose_device", "") or "",
+        "YOLO11_POSE_MODEL_PATH": getattr(settings, "yolo11_pose_model_path", ""),
+        "YOLO11_POSE_DEVICE": getattr(settings, "yolo11_pose_device", "") or "",
+        "RTMPOSE_ONNX_MODEL_PATH": getattr(settings, "rtmpose_onnx_model_path", ""),
+        "RTMPOSE_CHECKPOINT_PATH": getattr(settings, "rtmpose_checkpoint_path", ""),
+        "RTMPOSE_DEVICE": getattr(settings, "rtmpose_device", "") or "",
+    }
+    return {key: str(value) for key, value in values.items()}
+
+
+def _bool_text(value: Any) -> str:
+    return "true" if bool(value) else "false"

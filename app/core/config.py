@@ -222,7 +222,7 @@ class Settings:
     temporal_model_window_size: int = _get_int("TEMPORAL_MODEL_WINDOW_SIZE", 32)
     temporal_model_input_dim: int = _get_int("TEMPORAL_MODEL_INPUT_DIM", 15)
     temporal_warmup_min_size: int = _get_int("TEMPORAL_WARMUP_MIN_SIZE", 16)
-    temporal_fallback_to_mock: bool = _get_bool("TEMPORAL_FALLBACK_TO_MOCK", True)
+    temporal_fallback_to_mock: bool = _get_bool("TEMPORAL_FALLBACK_TO_MOCK", False)
     temporal_onnx_providers: str = os.getenv(
         "TEMPORAL_ONNX_PROVIDERS",
         "CUDAExecutionProvider,CPUExecutionProvider",
@@ -286,6 +286,16 @@ class Settings:
     main_system_base_prefix: str = os.getenv("MAIN_SYSTEM_BASE_PREFIX", "/api/v1")
     vision_service_public_base_url: str = os.getenv("VISION_SERVICE_PUBLIC_BASE_URL", "http://127.0.0.1:8000")
     fall_event_snapshot_dir: str = os.getenv("FALL_EVENT_SNAPSHOT_DIR", "logs/fall_events/snapshots")
+
+    pose_deployment_guard_enabled: bool = _get_bool("POSE_DEPLOYMENT_GUARD_ENABLED", True)
+    pose_evidence_package: str = os.getenv(
+        "POSE_EVIDENCE_PACKAGE",
+        "evaluations/pose_evidence_package_check_20260705.json",
+    )
+    pose_deployment_guard_output: str = os.getenv(
+        "POSE_DEPLOYMENT_GUARD_OUTPUT",
+        "evaluations/pose_deployment_guard_20260705.json",
+    )
 
 
 @lru_cache

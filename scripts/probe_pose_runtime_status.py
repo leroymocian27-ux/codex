@@ -34,7 +34,7 @@ BLOCKING_STALE_REASONS = (
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Probe live /status pose diagnostics for runtime A/B profiles.")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8000/api/v1")
+    parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--camera-id", default="camera_01")
     parser.add_argument("--profile-name", default="manual")
     parser.add_argument("--duration-seconds", type=float, default=60.0)
@@ -96,16 +96,33 @@ def collect_samples(
 
 
 def fetch_status(*, base_url: str, camera_id: str) -> dict[str, Any]:
-    base = base_url.rstrip("/")
+    attempts = status_url_candidates(base_url=base_url, camera_id=camera_id)
+    last_error: RuntimeError | None = None
+    for url in attempts:
+        request = urllib.request.Request(url, headers={"Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=5.0) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            last_error = RuntimeError(f"HTTP {exc.code} from {url}: {body}")
+            if exc.code != 404:
+                raise last_error from exc
+        except Exception as exc:
+            raise RuntimeError(f"{exc} (url={url})") from exc
+    assert last_error is not None
+    raise last_error
+
+
+def status_url_candidates(*, base_url: str, camera_id: str) -> list[str]:
     query = urllib.parse.urlencode({"camera_id": camera_id})
-    url = f"{base}/status?{query}"
-    request = urllib.request.Request(url, headers={"Accept": "application/json"})
-    try:
-        with urllib.request.urlopen(request, timeout=5.0) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {exc.code} from {url}: {body}") from exc
+    base = base_url.rstrip("/")
+    candidates = [f"{base}/status?{query}"]
+    if base.lower().endswith("/api/v1"):
+        root_base = base[:-7].rstrip("/")
+        if root_base:
+            candidates.append(f"{root_base}/status?{query}")
+    return _dedupe_urls(candidates)
 
 
 def summarize_samples(
@@ -260,6 +277,14 @@ def _recommendation(blockers: list[str]) -> str:
     if "pose_track_mismatch" in blockers:
         return "compare full-frame and crop providers; do not use mismatched pose as evidence"
     return "fix pose runtime validity before retraining"
+
+
+def _dedupe_urls(items: list[str]) -> list[str]:
+    result: list[str] = []
+    for item in items:
+        if item not in result:
+            result.append(item)
+    return result
 
 
 if __name__ == "__main__":

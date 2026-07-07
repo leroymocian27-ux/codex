@@ -1,11 +1,62 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
-from scripts.probe_pose_runtime_status import summarize_samples
+from scripts.probe_pose_runtime_status import fetch_status, status_url_candidates, summarize_samples
 
 
 class ProbePoseRuntimeStatusTest(unittest.TestCase):
+    def test_status_url_candidates_include_root_fallback_for_api_v1_base(self) -> None:
+        self.assertEqual(
+            status_url_candidates(base_url="http://127.0.0.1:8000/api/v1", camera_id="camera_01"),
+            [
+                "http://127.0.0.1:8000/api/v1/status?camera_id=camera_01",
+                "http://127.0.0.1:8000/status?camera_id=camera_01",
+            ],
+        )
+
+    def test_fetch_status_falls_back_from_api_v1_to_root_status_on_404(self) -> None:
+        class FakeHttpError(Exception):
+            def __init__(self, code: int, body: str) -> None:
+                self.code = code
+                self._body = body
+
+            def read(self) -> bytes:
+                return self._body.encode("utf-8")
+
+        calls: list[str] = []
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                return None
+
+            def read(self) -> bytes:
+                return b'{"pose":{"pose_provider":"yolo11_legacy"}}'
+
+        def fake_urlopen(request, timeout=5.0):
+            url = request.full_url
+            calls.append(url)
+            if url.endswith("/api/v1/status?camera_id=camera_01"):
+                raise FakeHttpError(404, '{"detail":"Not Found"}')
+            return FakeResponse()
+
+        with patch("scripts.probe_pose_runtime_status.urllib.request.urlopen", side_effect=fake_urlopen):
+            with patch("scripts.probe_pose_runtime_status.urllib.error.HTTPError", FakeHttpError):
+                payload = fetch_status(base_url="http://127.0.0.1:8000/api/v1", camera_id="camera_01")
+
+        self.assertEqual(payload["pose"]["pose_provider"], "yolo11_legacy")
+        self.assertEqual(
+            calls,
+            [
+                "http://127.0.0.1:8000/api/v1/status?camera_id=camera_01",
+                "http://127.0.0.1:8000/status?camera_id=camera_01",
+            ],
+        )
+
     def test_summarize_samples_computes_runtime_deltas_and_pass_gate(self) -> None:
         samples = [
             self._sample(target=10, attached=7, attempts=5, successes=5, busy=1),
